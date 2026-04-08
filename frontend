@@ -1,0 +1,1288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AMRx — AI Antimicrobial Resistance Assistant</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  /* ─── ORIGINAL CSS VARS (kept for JS compatibility) ─── */
+  :root {
+    --bg: #0d0f14;
+    --bg2: #13161e;
+    --bg3: #1a1e28;
+    --bg4: #222736;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.12);
+    --text: #e8eaf0;
+    --text2: #8b91a8;
+    --text3: #555d78;
+    --accent: #00e5a0;
+    --accent2: #00b87d;
+    --accent-dim: rgba(0,229,160,0.1);
+    --accent-glow: rgba(0,229,160,0.2);
+    --red: #ff5c5c;
+    --red-dim: rgba(255,92,92,0.12);
+    --amber: #ffb347;
+    --amber-dim: rgba(255,179,71,0.12);
+    --blue: #4da6ff;
+    --blue-dim: rgba(77,166,255,0.12);
+    --sidebar-w: 260px;
+    --radius: 12px;
+    --radius-sm: 8px;
+    --font: 'Sora', sans-serif;
+    --mono: 'JetBrains Mono', monospace;
+
+    /* ─── NEW LIGHT THEME VARS ─── */
+    --lt-bg: #f3f4f7;
+    --lt-surface: #ffffff;
+    --lt-border: #e2e6ed;
+    --lt-text: #1a1d2e;
+    --lt-text2: #5a6278;
+    --lt-text3: #9aa0b4;
+    --lt-accent: #2563eb;
+    --lt-accent-dim: rgba(37,99,235,0.08);
+    --lt-red: #dc2626;
+    --lt-amber: #d97706;
+    --lt-shadow: 0 2px 12px rgba(0,0,0,0.07);
+    --lt-shadow-md: 0 4px 24px rgba(0,0,0,0.10);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  /* ─── RESET BODY TO LIGHT ─── */
+  body {
+    font-family: var(--font);
+    background: var(--lt-bg);
+    color: var(--lt-text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+  }
+
+  /* ═══════════════════════════════
+     TOP NAVBAR
+  ═══════════════════════════════ */
+  .topnav {
+    background: var(--lt-surface);
+    border-bottom: 1px solid var(--lt-border);
+    height: 56px;
+    display: flex;
+    align-items: center;
+    padding: 0 32px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 1px 8px rgba(0,0,0,0.06);
+    flex-shrink: 0;
+  }
+  .topnav-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    margin-right: auto;
+  }
+  .topnav-logo-icon {
+    width: 28px; height: 28px;
+    background: var(--lt-accent);
+    border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .topnav-logo-icon svg { width: 15px; height: 15px; }
+  .topnav-logo-text {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--lt-text);
+    letter-spacing: -0.5px;
+  }
+  .topnav-logo-text span { color: var(--lt-accent); }
+  .topnav-links {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .topnav-link {
+    padding: 7px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--lt-text2);
+    cursor: pointer;
+    transition: all 0.15s;
+    border: none;
+    background: none;
+    font-family: var(--font);
+    text-decoration: none;
+  }
+  .topnav-link:hover { background: var(--lt-accent-dim); color: var(--lt-text); }
+  .topnav-link.active { color: var(--lt-accent); font-weight: 600; }
+
+  /* ═══════════════════════════════
+     PAGE WRAPPER
+  ═══════════════════════════════ */
+  .page-wrapper {
+    flex: 1;
+    overflow-y: auto;
+    padding-bottom: 56px; /* space for fixed disclaimer */
+  }
+  .page-wrapper::-webkit-scrollbar { width: 5px; }
+  .page-wrapper::-webkit-scrollbar-thumb { background: #d0d4de; border-radius: 4px; }
+
+  /* ─── PAGE VISIBILITY ─── */
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* ═══════════════════════════════
+     ANALYZE PAGE (CHAT + SYMPTOMS merged into main)
+  ═══════════════════════════════ */
+  .analyze-layout {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 36px 32px 24px;
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 28px;
+    align-items: start;
+  }
+
+  /* LEFT PANEL */
+  .left-panel {}
+  .left-panel h1 {
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--lt-text);
+    letter-spacing: -0.5px;
+    margin-bottom: 8px;
+    line-height: 1.25;
+  }
+  .left-panel .subtitle {
+    font-size: 14px;
+    color: var(--lt-text2);
+    margin-bottom: 24px;
+    line-height: 1.6;
+  }
+
+  /* CARD BASE */
+  .lt-card {
+    background: var(--lt-surface);
+    border: 1px solid var(--lt-border);
+    border-radius: 14px;
+    box-shadow: var(--lt-shadow);
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  .lt-card-body { padding: 20px 22px; }
+
+  /* REGION CARD */
+  .region-card .lt-card-body { padding: 20px 22px; }
+  .field-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--lt-text2);
+    margin-bottom: 8px;
+    letter-spacing: 0.3px;
+  }
+  .region-select-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--lt-bg);
+    border: 1px solid var(--lt-border);
+    border-radius: 10px;
+    padding: 10px 14px;
+  }
+  .region-select-wrap svg { color: var(--lt-text3); flex-shrink: 0; }
+  .region-select-wrap select {
+    background: none;
+    border: none;
+    outline: none;
+    font-family: var(--font);
+    font-size: 14px;
+    color: var(--lt-text);
+    width: 100%;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  /* UPLOAD CARD */
+  .upload-card {}
+  .upload-drop-zone {
+    margin: 20px 22px 0;
+    border: 2px dashed var(--lt-border);
+    border-radius: 12px;
+    padding: 40px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    background: var(--lt-bg);
+  }
+  .upload-drop-zone:hover { border-color: var(--lt-accent); background: var(--lt-accent-dim); }
+  .upload-icon-wrap {
+    width: 48px; height: 48px;
+    margin: 0 auto 16px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--lt-accent);
+  }
+  .upload-drop-zone h3 { font-size: 15px; font-weight: 600; color: var(--lt-text); margin-bottom: 6px; }
+  .upload-drop-zone p { font-size: 13px; color: var(--lt-text2); margin-bottom: 4px; }
+  .upload-drop-zone small { font-size: 12px; color: var(--lt-text3); }
+
+  /* CHAT INPUT (inside upload card) */
+  .chat-input-section { padding: 16px 22px 20px; }
+  .chat-input-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--lt-bg);
+    border: 1px solid var(--lt-border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    transition: border-color 0.2s;
+  }
+  .chat-input-box:focus-within { border-color: var(--lt-accent); }
+  .chat-input-box textarea {
+    flex: 1;
+    background: none;
+    border: none;
+    outline: none;
+    font-family: var(--font);
+    font-size: 14px;
+    color: var(--lt-text);
+    resize: none;
+    min-height: 22px;
+    max-height: 100px;
+    line-height: 1.5;
+  }
+  .chat-input-box textarea::placeholder { color: var(--lt-text3); }
+  .chat-send-btn {
+    width: 32px; height: 32px;
+    background: var(--lt-accent);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
+    transition: background 0.15s, transform 0.1s;
+    flex-shrink: 0;
+  }
+  .chat-send-btn:hover { background: #1d4ed8; transform: scale(1.04); }
+  .chat-attach-btn {
+    width: 32px; height: 32px;
+    background: none;
+    border: 1px solid var(--lt-border);
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--lt-text2);
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .chat-attach-btn:hover { background: var(--lt-accent-dim); color: var(--lt-accent); }
+
+  /* FILE PREVIEW */
+  .file-preview-lt {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--lt-accent-dim);
+    border: 1px solid rgba(37,99,235,0.15);
+    border-radius: 8px; padding: 7px 12px;
+    font-size: 12px; color: var(--lt-text2);
+    margin: 0 22px 8px;
+  }
+  .file-preview-lt .remove { cursor: pointer; color: var(--lt-text3); margin-left: auto; }
+  .file-preview-lt .remove:hover { color: var(--lt-red); }
+
+  /* CHAT RESPONSE AREA */
+  .chat-response-area {
+    margin-top: 8px;
+  }
+  .chat-welcome-lt {
+    padding: 28px 22px;
+    text-align: center;
+  }
+  .chat-welcome-lt p { font-size: 13px; color: var(--lt-text3); }
+  .quick-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 16px;
+    text-align: left;
+  }
+  .quick-card-lt {
+    background: var(--lt-bg);
+    border: 1px solid var(--lt-border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-size: 12px;
+    color: var(--lt-text2);
+    line-height: 1.5;
+  }
+  .quick-card-lt:hover { border-color: var(--lt-accent); color: var(--lt-text); box-shadow: 0 2px 8px rgba(37,99,235,0.08); }
+  .quick-card-lt-title { font-size: 12px; font-weight: 600; color: var(--lt-text); margin-bottom: 3px; }
+
+  /* CHAT MESSAGES */
+  #chatMessages { padding: 0 22px 16px; }
+  .lt-message { display: flex; gap: 10px; margin-bottom: 16px; }
+  .lt-message.user { flex-direction: row-reverse; }
+  .lt-avatar {
+    width: 30px; height: 30px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; flex-shrink: 0;
+  }
+  .lt-avatar.ai { background: var(--lt-accent-dim); color: var(--lt-accent); border: 1px solid rgba(37,99,235,0.15); font-size: 10px; }
+  .lt-avatar.user { background: #f0f0f5; color: var(--lt-text2); }
+  .lt-bubble {
+    max-width: 80%;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 13.5px;
+    line-height: 1.6;
+  }
+  .lt-message.ai .lt-bubble { background: var(--lt-bg); border: 1px solid var(--lt-border); border-top-left-radius: 3px; color: var(--lt-text); }
+  .lt-message.user .lt-bubble { background: var(--lt-accent); border-top-right-radius: 3px; color: #fff; }
+
+  /* LOADING */
+  .lt-loading { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--lt-bg); border: 1px solid var(--lt-border); border-radius: 12px; width: fit-content; }
+  .dot-wave { display: flex; gap: 4px; }
+  .dot-wave span { width: 5px; height: 5px; border-radius: 50%; background: var(--lt-accent); animation: wave 1.2s infinite; }
+  .dot-wave span:nth-child(2) { animation-delay: 0.2s; }
+  .dot-wave span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes wave { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-5px)} }
+  .loading-text { font-size: 12px; color: var(--lt-text3); }
+
+  /* AI RESULT CARD */
+  .ai-result-card {
+    background: var(--lt-surface);
+    border: 1px solid var(--lt-border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 14px;
+    max-width: 100%;
+    box-shadow: var(--lt-shadow);
+  }
+  .ai-result-header {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--lt-border);
+    display: flex; align-items: center; gap: 7px;
+    font-size: 11px; font-weight: 600; color: var(--lt-text2);
+    font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.5px;
+    background: var(--lt-bg);
+  }
+  .ai-result-body { padding: 14px; }
+  .lt-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .lt-info-item {
+    background: var(--lt-bg);
+    border: 1px solid var(--lt-border);
+    border-radius: 8px;
+    padding: 9px 11px;
+  }
+  .lt-info-label { font-size: 10px; color: var(--lt-text3); font-family: var(--mono); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 3px; }
+  .lt-info-value { font-size: 13px; font-weight: 600; color: var(--lt-text); }
+  .lt-section-label { font-size: 10px; color: var(--lt-text3); font-family: var(--mono); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; margin-top: 12px; }
+  .lt-section-label:first-child { margin-top: 0; }
+  .lt-eval-row { display: flex; align-items: center; gap: 8px; }
+  .lt-eval-badge { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; font-family: var(--mono); }
+  .lt-eval-badge.correct { background: rgba(22,163,74,0.1); color: #16a34a; border: 1px solid rgba(22,163,74,0.2); }
+  .lt-eval-badge.incorrect { background: rgba(220,38,38,0.08); color: var(--lt-red); border: 1px solid rgba(220,38,38,0.15); }
+  .lt-risk-badge { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; font-family: var(--mono); }
+  .lt-risk-badge.low { background: rgba(22,163,74,0.1); color: #16a34a; border: 1px solid rgba(22,163,74,0.2); }
+  .lt-risk-badge.medium { background: rgba(217,119,6,0.1); color: #b45309; border: 1px solid rgba(217,119,6,0.2); }
+  .lt-risk-badge.high { background: rgba(220,38,38,0.08); color: var(--lt-red); border: 1px solid rgba(220,38,38,0.15); }
+  .lt-explanation { background: var(--lt-bg); border-left: 3px solid var(--lt-accent); border-radius: 0 8px 8px 0; padding: 10px 13px; font-size: 13px; color: var(--lt-text2); line-height: 1.7; margin-top: 10px; }
+  .eval-note { font-size: 12px; color: var(--lt-text2); }
+
+  /* ═══════════════════════════════
+     RIGHT SIDEBAR
+  ═══════════════════════════════ */
+  .right-sidebar {}
+  .sidebar-section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--lt-text);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .sidebar-section-title svg { color: var(--lt-accent); }
+
+  .amr-stat-card {
+    background: var(--lt-surface);
+    border: 1px solid var(--lt-border);
+    border-radius: 12px;
+    box-shadow: var(--lt-shadow);
+    padding: 16px 18px;
+    margin-bottom: 12px;
+    border-left: 4px solid transparent;
+    position: relative;
+    overflow: hidden;
+  }
+  .amr-stat-card.red { border-left-color: var(--lt-red); }
+  .amr-stat-card.amber { border-left-color: var(--lt-amber); }
+  .amr-stat-card-loc {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: var(--lt-text2);
+    font-weight: 500;
+    margin-bottom: 6px;
+  }
+  .amr-stat-num {
+    font-size: 36px;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 8px;
+    font-family: var(--mono);
+  }
+  .amr-stat-card.red .amr-stat-num { color: var(--lt-red); }
+  .amr-stat-card.amber .amr-stat-num { color: var(--lt-amber); }
+  .amr-stat-desc { font-size: 12.5px; color: var(--lt-text2); line-height: 1.6; }
+
+  .amr-info-box {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 12px;
+    padding: 16px 18px;
+    box-shadow: var(--lt-shadow);
+  }
+  .amr-info-box-title { font-size: 13px; font-weight: 700; color: #1d4ed8; margin-bottom: 8px; }
+  .amr-info-box p { font-size: 12.5px; color: #3b5998; line-height: 1.7; }
+
+  /* ═══════════════════════════════
+     SYMPTOMS PAGE
+  ═══════════════════════════════ */
+  .symptoms-layout {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 36px 32px 24px;
+  }
+  .page-title-lt { font-size: 22px; font-weight: 700; color: var(--lt-text); margin-bottom: 6px; }
+  .page-subtitle-lt { font-size: 14px; color: var(--lt-text2); margin-bottom: 24px; }
+
+  .lt-form-card {
+    background: var(--lt-surface);
+    border: 1px solid var(--lt-border);
+    border-radius: 14px;
+    box-shadow: var(--lt-shadow);
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+  .lt-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .lt-form-group { display: flex; flex-direction: column; gap: 6px; }
+  .lt-form-group.full { grid-column: 1/-1; }
+  .lt-form-label { font-size: 11px; color: var(--lt-text2); font-family: var(--mono); text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+  .lt-form-input {
+    background: var(--lt-bg);
+    border: 1px solid var(--lt-border);
+    border-radius: 9px;
+    color: var(--lt-text);
+    font-family: var(--font); font-size: 14px;
+    padding: 10px 14px;
+    outline: none; transition: border-color 0.15s;
+    -webkit-appearance: none; appearance: none;
+  }
+  .lt-form-input:focus { border-color: var(--lt-accent); }
+  .lt-form-input option { background: #fff; }
+  .lt-radio-group { display: flex; gap: 8px; }
+  .lt-radio-opt {
+    flex: 1;
+    background: var(--lt-bg);
+    border: 1px solid var(--lt-border);
+    border-radius: 9px;
+    padding: 10px;
+    text-align: center; cursor: pointer; font-size: 13px;
+    color: var(--lt-text2); transition: all 0.15s;
+    user-select: none;
+  }
+  .lt-radio-opt:hover { border-color: var(--lt-accent); color: var(--lt-text); }
+  .lt-radio-opt.selected { background: var(--lt-accent-dim); border-color: rgba(37,99,235,0.3); color: var(--lt-accent); font-weight: 600; }
+
+  .lt-analyze-btn {
+    width: 100%; padding: 13px;
+    background: var(--lt-accent); color: #fff;
+    border: none; border-radius: 10px;
+    font-family: var(--font); font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s;
+    margin-top: 4px;
+  }
+  .lt-analyze-btn:hover { background: #1d4ed8; transform: translateY(-1px); }
+  .lt-analyze-btn:active { transform: translateY(0); }
+
+  /* Results */
+  .results-section { display: none; }
+  .results-section.visible { display: block; }
+  .result-risk-card {
+    border-radius: 12px; padding: 18px 22px; margin-bottom: 14px;
+    border: 1px solid; display: flex; align-items: center; gap: 16px;
+    box-shadow: var(--lt-shadow);
+  }
+  .result-risk-card.low { background: rgba(22,163,74,0.06); border-color: rgba(22,163,74,0.2); }
+  .result-risk-card.medium { background: rgba(217,119,6,0.06); border-color: rgba(217,119,6,0.2); }
+  .result-risk-card.high { background: rgba(220,38,38,0.06); border-color: rgba(220,38,38,0.2); }
+  .risk-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .result-risk-card.low .risk-icon { background: rgba(22,163,74,0.12); color: #16a34a; }
+  .result-risk-card.medium .risk-icon { background: rgba(217,119,6,0.12); color: #b45309; }
+  .result-risk-card.high .risk-icon { background: rgba(220,38,38,0.10); color: var(--lt-red); }
+  .risk-info h3 { font-size: 15px; font-weight: 600; margin-bottom: 4px; color: var(--lt-text); }
+  .risk-info p { font-size: 13px; color: var(--lt-text2); line-height: 1.6; }
+
+  .lt-chart-card {
+    background: var(--lt-surface);
+    border: 1px solid var(--lt-border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 14px;
+    box-shadow: var(--lt-shadow);
+  }
+  .lt-chart-card h3 { font-size: 12px; font-family: var(--mono); color: var(--lt-text2); margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .chart-wrap { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+  .chart-canvas-wrap { width: 160px; height: 160px; flex-shrink: 0; }
+  .chart-legend { flex: 1; min-width: 150px; }
+  .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; font-size: 12.5px; }
+  .legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .legend-label { color: var(--lt-text2); }
+  .legend-val { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--lt-text); font-weight: 600; }
+
+  /* ═══════════════════════════════
+     ABOUT PAGE
+  ═══════════════════════════════ */
+  .about-layout {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 36px 32px 24px;
+  }
+  .about-hero {
+    background: linear-gradient(135deg, rgba(37,99,235,0.05) 0%, rgba(37,99,235,0.02) 100%);
+    border: 1px solid rgba(37,99,235,0.12);
+    border-radius: 14px;
+    padding: 30px;
+    margin-bottom: 24px;
+  }
+  .about-hero h1 { font-size: 24px; font-weight: 700; margin-bottom: 10px; color: var(--lt-text); }
+  .about-hero p { font-size: 14px; color: var(--lt-text2); line-height: 1.8; }
+
+  .lt-stat-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 24px; }
+  .lt-stat-box {
+    background: var(--lt-surface);
+    border: 1px solid var(--lt-border);
+    border-radius: 12px;
+    padding: 18px;
+    text-align: center;
+    box-shadow: var(--lt-shadow);
+  }
+  .lt-stat-num { font-size: 26px; font-weight: 700; color: var(--lt-accent); font-family: var(--mono); }
+  .lt-stat-label { font-size: 11px; color: var(--lt-text2); margin-top: 4px; line-height: 1.5; }
+
+  .about-section-lt { margin-bottom: 24px; }
+  .about-section-lt h2 { font-size: 16px; font-weight: 700; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--lt-border); color: var(--lt-text); }
+  .about-section-lt p { font-size: 13.5px; color: var(--lt-text2); line-height: 1.8; margin-bottom: 12px; }
+
+  .lt-alert-box {
+    background: rgba(220,38,38,0.05);
+    border: 1px solid rgba(220,38,38,0.15);
+    border-left: 3px solid var(--lt-red);
+    border-radius: 0 8px 8px 0;
+    padding: 12px 14px;
+    font-size: 13px; color: var(--lt-text2); line-height: 1.7;
+    margin-bottom: 14px;
+  }
+  .lt-india-box {
+    background: rgba(217,119,6,0.05);
+    border: 1px solid rgba(217,119,6,0.15);
+    border-left: 3px solid var(--lt-amber);
+    border-radius: 0 8px 8px 0;
+    padding: 12px 14px;
+    font-size: 13px; color: var(--lt-text2); line-height: 1.7;
+    margin-bottom: 14px;
+  }
+  .lt-feature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .lt-feature-card {
+    background: var(--lt-surface);
+    border: 1px solid var(--lt-border);
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: var(--lt-shadow);
+    transition: border-color 0.15s;
+  }
+  .lt-feature-card:hover { border-color: var(--lt-accent); }
+  .lt-feature-icon { width: 30px; height: 30px; border-radius: 8px; background: var(--lt-accent-dim); display: flex; align-items: center; justify-content: center; margin-bottom: 10px; color: var(--lt-accent); }
+  .lt-feature-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--lt-text); }
+  .lt-feature-desc { font-size: 12px; color: var(--lt-text2); line-height: 1.6; }
+
+  /* ═══════════════════════════════
+     DISCLAIMER BAR
+  ═══════════════════════════════ */
+  .disclaimer-bar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: #fef9c3;
+    border-top: 1px solid #fde047;
+    padding: 9px 32px;
+    font-size: 12px;
+    color: #713f12;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    z-index: 200;
+    line-height: 1.5;
+  }
+  .disclaimer-bar svg { flex-shrink: 0; color: #ca8a04; }
+  .disclaimer-bar strong { font-weight: 700; }
+
+  /* ═══════════════════════════════
+     ANIMATIONS
+  ═══════════════════════════════ */
+  @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+  .fade-up { animation: fadeUp 0.3s ease forwards; }
+
+  /* ═══════════════════════════════
+     RESPONSIVE
+  ═══════════════════════════════ */
+  @media(max-width: 900px) {
+    .analyze-layout { grid-template-columns: 1fr; padding: 20px 16px; }
+    .right-sidebar { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .sidebar-section-title { grid-column: 1/-1; }
+    .amr-info-box { grid-column: 1/-1; }
+  }
+  @media(max-width: 600px) {
+    .topnav { padding: 0 16px; }
+    .topnav-link span { display: none; }
+    .quick-grid { grid-template-columns: 1fr; }
+    .lt-form-grid { grid-template-columns: 1fr; }
+    .lt-stat-row { grid-template-columns: 1fr; }
+    .lt-feature-grid { grid-template-columns: 1fr; }
+    .right-sidebar { grid-template-columns: 1fr; }
+    .disclaimer-bar { font-size: 11px; padding: 8px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══ TOP NAVBAR ═══ -->
+<nav class="topnav">
+  <a class="topnav-logo" href="#">
+    <div class="topnav-logo-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" width="15" height="15">
+        <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+      </svg>
+    </div>
+    <span class="topnav-logo-text">AMR<span>x</span></span>
+  </a>
+  <div class="topnav-links">
+    <button class="topnav-link active" onclick="showPage('chat')" id="nav-chat">Analyze</button>
+    <button class="topnav-link" onclick="showPage('symptoms')" id="nav-symptoms">Review Your Symptoms</button>
+    <button class="topnav-link" onclick="showPage('about')" id="nav-about">About</button>
+  </div>
+</nav>
+
+<!-- ═══ PAGE WRAPPER ═══ -->
+<div class="page-wrapper">
+
+  <!-- ══ PAGE: CHAT (Analyze) ══ -->
+  <div class="page active" id="page-chat">
+    <div class="analyze-layout">
+
+      <!-- LEFT PANEL -->
+      <div class="left-panel">
+        <h1>AI-Powered Prescription Analysis</h1>
+        <p class="subtitle">Upload a prescription to verify antibiotic suitability and detect potential misuse contributing to Antimicrobial Resistance (AMR).</p>
+
+        <!-- Region Card -->
+        <div class="lt-card region-card">
+          <div class="lt-card-body">
+            <div class="field-label">Context Region</div>
+            <div class="region-select-wrap">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              <select id="symp-location-main">
+                <option selected>Karnataka</option>
+                <option>Bengaluru, Karnataka</option>
+                <option>Mumbai, Maharashtra</option>
+                <option>Delhi NCR</option>
+                <option>Chennai, Tamil Nadu</option>
+                <option>Hyderabad, Telangana</option>
+                <option>Kolkata, West Bengal</option>
+                <option>Other India</option>
+                <option>Outside India</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Upload + Chat Card -->
+        <div class="lt-card upload-card">
+
+          <!-- File preview (hidden by default) -->
+          <div id="filePreviewArea" style="display:none; padding:16px 22px 0;">
+            <div class="file-preview-lt">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <span id="fileName"></span>
+              <span class="remove" onclick="clearFile()">✕</span>
+            </div>
+          </div>
+
+          <!-- Drop zone -->
+          <div class="upload-drop-zone" onclick="document.getElementById('fileInput').click()">
+            <div class="upload-icon-wrap">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/>
+                <path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/>
+              </svg>
+            </div>
+            <h3>Upload Prescription</h3>
+            <p>Drag and drop your image here, or click to browse</p>
+            <small>Supports JPG, PNG, JPEG</small>
+          </div>
+
+          <!-- Chat input -->
+          <div class="chat-input-section">
+            <div class="chat-input-box">
+              <textarea id="chatInput" rows="1" placeholder="What would you like to know?" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+              <button class="chat-attach-btn" onclick="document.getElementById('fileInput').click()" title="Attach file">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+              </button>
+              <button class="chat-send-btn" onclick="sendMessage()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Response area -->
+          <div class="chat-response-area">
+            <div id="welcomeScreen" class="chat-welcome-lt">
+              <p>Or try a quick example:</p>
+              <div class="quick-grid">
+                <div class="quick-card-lt" onclick="insertQuick('Analyze Amoxicillin 500mg prescribed for viral fever for 7 days')">
+                  <div class="quick-card-lt-title">Viral + Antibiotic</div>
+                  Amoxicillin for viral fever — detect misuse
+                </div>
+                <div class="quick-card-lt" onclick="insertQuick('Patient prescribed Azithromycin 250mg for 3 days for community acquired pneumonia')">
+                  <div class="quick-card-lt-title">Community Pneumonia</div>
+                  Azithromycin CAP — evaluate dosage
+                </div>
+                <div class="quick-card-lt" onclick="insertQuick('Ciprofloxacin 500mg twice daily for UTI for 14 days in elderly patient')">
+                  <div class="quick-card-lt-title">Extended Duration</div>
+                  Ciprofloxacin UTI — duration check
+                </div>
+                <div class="quick-card-lt" onclick="insertQuick('Augmentin 625mg prescribed for common cold and cough')">
+                  <div class="quick-card-lt-title">Cold & Antibiotics</div>
+                  Augmentin for cold — resistance risk
+                </div>
+              </div>
+            </div>
+            <div id="chatMessages"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT SIDEBAR -->
+      <div class="right-sidebar">
+        <div class="sidebar-section-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          AMR Context
+        </div>
+
+        <div class="amr-stat-card red">
+          <div class="amr-stat-card-loc">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            India
+          </div>
+          <div class="amr-stat-num">44%</div>
+          <div class="amr-stat-desc">Of antibiotics are inappropriately prescribed for viral infections where they are ineffective.</div>
+        </div>
+
+        <div class="amr-stat-card amber">
+          <div class="amr-stat-card-loc">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            Karnataka
+          </div>
+          <div class="amr-stat-num">75%</div>
+          <div class="amr-stat-desc">High prevalence of Over-The-Counter (OTC) antibiotic usage without a valid medical prescription.</div>
+        </div>
+
+        <div class="amr-info-box">
+          <div class="amr-info-box-title">The Threat of AMR</div>
+          <p>Antimicrobial Resistance occurs when bacteria evolve to resist the drugs designed to kill them, making common infections harder to treat and increasing the risk of disease spread.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══ PAGE: SYMPTOMS ══ -->
+  <div class="page" id="page-symptoms">
+    <div class="symptoms-layout">
+      <h1 class="page-title-lt">Symptom & Usage Review</h1>
+      <p class="page-subtitle-lt">Describe your antibiotic usage — I'll assess resistance risk and provide guidance.</p>
+
+      <div class="lt-form-card">
+        <div class="lt-form-grid">
+          <div class="lt-form-group">
+            <label class="lt-form-label">Disease / Condition</label>
+            <input type="text" class="lt-form-input" id="symp-disease" placeholder="e.g. UTI, Pneumonia, Fever">
+          </div>
+          <div class="lt-form-group">
+            <label class="lt-form-label">Antibiotic Used</label>
+            <input type="text" class="lt-form-input" id="symp-antibiotic" placeholder="e.g. Amoxicillin, Ciprofloxacin">
+          </div>
+          <div class="lt-form-group">
+            <label class="lt-form-label">Prescription</label>
+            <div class="lt-radio-group">
+              <div class="lt-radio-opt selected" id="rx-yes" onclick="selectRx('yes')">Yes — Prescribed</div>
+              <div class="lt-radio-opt" id="rx-no" onclick="selectRx('no')">No — Self-medicated</div>
+            </div>
+          </div>
+          <div class="lt-form-group">
+            <label class="lt-form-label">Duration (days)</label>
+            <input type="number" class="lt-form-input" id="symp-duration" placeholder="e.g. 5" min="1" max="90">
+          </div>
+          <div class="lt-form-group full">
+            <label class="lt-form-label">Location / Region</label>
+            <select class="lt-form-input" id="symp-location">
+              <option value="">Select region...</option>
+              <option>Bengaluru, Karnataka</option>
+              <option>Mumbai, Maharashtra</option>
+              <option>Delhi NCR</option>
+              <option>Chennai, Tamil Nadu</option>
+              <option>Hyderabad, Telangana</option>
+              <option>Kolkata, West Bengal</option>
+              <option>Other India</option>
+              <option>Outside India</option>
+            </select>
+          </div>
+        </div>
+        <button class="lt-analyze-btn" onclick="runSymptomAnalysis()">Analyze Risk →</button>
+      </div>
+
+      <div id="sympLoading" style="display:none; margin-bottom:20px;">
+        <div class="lt-loading">
+          <div class="dot-wave"><span></span><span></span><span></span></div>
+          <span class="loading-text">Analyzing resistance patterns...</span>
+        </div>
+      </div>
+
+      <div class="results-section" id="sympResults">
+        <div id="riskCard"></div>
+        <div class="lt-chart-card">
+          <h3>Resistance Risk Breakdown</h3>
+          <div class="chart-wrap">
+            <div class="chart-canvas-wrap">
+              <canvas id="riskChart"></canvas>
+            </div>
+            <div class="chart-legend" id="chartLegend"></div>
+          </div>
+        </div>
+        <div class="lt-form-card" id="sympExplanation"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ PAGE: ABOUT ══ -->
+  <div class="page" id="page-about">
+    <div class="about-layout">
+      <div class="about-hero">
+        <h1>Antimicrobial Resistance</h1>
+        <p>AMR occurs when bacteria, viruses, fungi, and parasites evolve to resist the effects of medications. This makes infections harder to treat and increases the risk of disease spread, severe illness, and death.</p>
+      </div>
+
+      <div class="lt-stat-row">
+        <div class="lt-stat-box">
+          <div class="lt-stat-num">1.27M</div>
+          <div class="lt-stat-label">Global deaths attributed to AMR in 2019</div>
+        </div>
+        <div class="lt-stat-box">
+          <div class="lt-stat-num">700K+</div>
+          <div class="lt-stat-label">Annual AMR deaths in India alone</div>
+        </div>
+        <div class="lt-stat-box">
+          <div class="lt-stat-num">10M</div>
+          <div class="lt-stat-label">Projected annual deaths by 2050</div>
+        </div>
+      </div>
+
+      <div class="about-section-lt">
+        <h2>Why AMR is Dangerous</h2>
+        <div class="lt-alert-box">
+          <strong>Global Crisis:</strong> The WHO has declared AMR one of the top 10 global public health threats. Overuse and misuse of antibiotics in humans, animals, and agriculture are the primary drivers of this silent pandemic.
+        </div>
+        <div class="lt-india-box">
+          <strong>India Context:</strong> India is the world's largest consumer of antibiotics. Over-the-counter antibiotic sales without prescriptions, combined with incomplete treatment courses, has created hotbeds of resistance — particularly in densely populated cities like Bengaluru, Mumbai, and Delhi.
+        </div>
+        <p>Karnataka specifically has seen rising rates of resistant infections in its tertiary care hospitals. Bugs like New Delhi Metallo-beta-lactamase (NDM-1) — named after India — represent strains that resist nearly all known antibiotics.</p>
+      </div>
+
+      <div class="about-section-lt">
+        <h2>What AMR Guard Does</h2>
+        <div class="lt-feature-grid">
+          <div class="lt-feature-card">
+            <div class="lt-feature-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/><polyline points="9 12 11 14 15 10"/></svg>
+            </div>
+            <div class="lt-feature-title">Prescription Validation</div>
+            <div class="lt-feature-desc">Detects if an antibiotic is appropriate for the diagnosed condition, including drug-disease mismatches.</div>
+          </div>
+          <div class="lt-feature-card">
+            <div class="lt-feature-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <div class="lt-feature-title">Resistance Prediction</div>
+            <div class="lt-feature-desc">Evaluates the likelihood of antibiotic resistance based on drug class, duration, region, and usage patterns.</div>
+          </div>
+          <div class="lt-feature-card">
+            <div class="lt-feature-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>
+            <div class="lt-feature-title">Dosage & Duration Check</div>
+            <div class="lt-feature-desc">Flags incorrect dosages and inappropriate treatment durations that accelerate resistance development.</div>
+          </div>
+          <div class="lt-feature-card">
+            <div class="lt-feature-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+            </div>
+            <div class="lt-feature-title">Clinical Decision Support</div>
+            <div class="lt-feature-desc">Assists healthcare professionals with evidence-based antibiotic stewardship guidance at the point of care.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="about-section-lt">
+        <h2>Disclaimer</h2>
+        <p style="color:var(--lt-text3); font-size:12px; line-height:1.8;">AMR Guard is an AI-assisted tool intended for educational and clinical decision support purposes only. It does not replace professional medical advice, diagnosis, or treatment. Always consult a qualified healthcare provider before making any medical decisions. This tool is not FDA or CDSCO approved as a medical device.</p>
+      </div>
+    </div>
+  </div>
+
+</div><!-- end page-wrapper -->
+
+<!-- ═══ DISCLAIMER BAR ═══ -->
+<div class="disclaimer-bar">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <span><strong>Disclaimer:</strong> This tool is for educational purposes only. It does not provide medical advice or tell you to stop taking medication. Always follow your doctor's instructions but use this info to start a conversation with your doctor.</span>
+</div>
+
+<!-- hidden file input -->
+<input type="file" id="fileInput" accept="image/*,.pdf" style="display:none" onchange="handleFile(event)">
+
+<script>
+// ── NAV ──
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.topnav-link').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  document.getElementById('nav-' + id).classList.add('active');
+  document.querySelector('.page-wrapper').scrollTo({ top: 0 });
+}
+
+// ── CHAT ──
+let uploadedFile = null;
+let chartInstance = null;
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+}
+function insertQuick(text) {
+  const input = document.getElementById('chatInput');
+  input.value = text;
+  autoResize(input);
+  input.focus();
+}
+function handleFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  uploadedFile = file;
+  document.getElementById('fileName').textContent = file.name;
+  document.getElementById('filePreviewArea').style.display = 'flex';
+}
+function clearFile() {
+  uploadedFile = null;
+  document.getElementById('filePreviewArea').style.display = 'none';
+  document.getElementById('fileInput').value = '';
+}
+
+async function sendMessage(){
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text && !uploadedFile) return;
+
+  document.getElementById('welcomeScreen').style.display = 'none';
+  const container = document.getElementById('chatMessages');
+
+  const userText = text || "Analyze this prescription";
+  appendMessage(container, 'user', userText);
+
+  input.value = '';
+  input.style.height = 'auto';
+
+
+  const loadingId = appendLoading(container);
+  scrollChat();
+
+  // --- THE FIX IS HERE ---
+  setTimeout(async () => {
+    document.getElementById(loadingId)?.remove();
+    const response = await generateResponse(userText);
+    clearFile();
+    appendAICard(container, response);
+    scrollChat();
+  }, 1800 + Math.random() * 800);
+}
+function appendMessage(container, role, text) {
+  const div = document.createElement('div');
+  div.className = 'lt-message ' + role + ' fade-up';
+  div.innerHTML = `
+    <div class="lt-avatar ${role}">${role === 'ai' ? 'AI' : 'U'}</div>
+    <div class="lt-bubble">${text}</div>`;
+  container.appendChild(div);
+}
+
+function appendLoading(container) {
+  const id = 'loading-' + Date.now();
+  const div = document.createElement('div');
+  div.className = 'lt-message ai fade-up';
+  div.id = id;
+  div.innerHTML = `
+    <div class="lt-avatar ai">AI</div>
+    <div class="lt-loading">
+      <div class="dot-wave"><span></span><span></span><span></span></div>
+      <span class="loading-text">Analyzing prescription...</span>
+    </div>`;
+  container.appendChild(div);
+  return id;
+}
+
+function appendAICard(container, data) {
+  const evalClass = data.evaluation === 'Correct' ? 'correct' : 'incorrect';
+  const riskClass = data.risk.toLowerCase();
+  const div = document.createElement('div');
+  div.className = 'lt-message ai fade-up';
+  div.innerHTML = `
+    <div class="lt-avatar ai">AI</div>
+    <div style="max-width:85%;flex:1">
+      <div class="ai-result-card">
+        <div class="ai-result-header">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
+          Prescription Analysis Report
+        </div>
+        <div class="ai-result-body">
+          <div class="lt-section-label">Extracted Information</div>
+          <div class="lt-info-grid">
+            <div class="lt-info-item"><div class="lt-info-label">Disease</div><div class="lt-info-value">${data.disease}</div></div>
+            <div class="lt-info-item"><div class="lt-info-label">Antibiotic</div><div class="lt-info-value">${data.antibiotic}</div></div>
+            <div class="lt-info-item"><div class="lt-info-label">Dosage</div><div class="lt-info-value">${data.dosage}</div></div>
+            <div class="lt-info-item"><div class="lt-info-label">Duration</div><div class="lt-info-value">${data.duration}</div></div>
+          </div>
+          <div class="lt-section-label">Evaluation</div>
+          <div class="lt-eval-row">
+            <span class="lt-eval-badge ${evalClass}">${data.evaluation}</span>
+            <span class="eval-note">${data.evalNote}</span>
+          </div>
+          <div class="lt-section-label">Resistance Risk</div>
+          <div class="lt-eval-row">
+            <span class="lt-risk-badge ${riskClass}">${data.risk} Risk</span>
+            <span class="eval-note">${data.riskNote}</span>
+          </div>
+          <div class="lt-section-label">Clinical Explanation</div>
+          <div class="lt-explanation">${data.explanation}</div>
+        </div>
+      </div>
+    </div>`;
+  container.appendChild(div);
+}
+
+function scrollChat() {
+  const wrapper = document.querySelector('.page-wrapper');
+  setTimeout(() => wrapper.scrollTo({ top: wrapper.scrollHeight, behavior: 'smooth' }), 50);
+}
+
+async function generateResponse(text) {
+  try {
+    // 1. Convert the uploaded image to Base64 so Python can read it
+    let base64Image = "";
+    if (uploadedFile) {
+      base64Image = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(uploadedFile);
+      });
+    }
+
+    // 2. Send the data safely to your Python Backend (app.py)
+    const response = await fetch('http://localhost:5000/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image: base64Image,
+        text_query: text,
+        age: 25, 
+        symptom: "Fever" 
+      })
+    });
+
+    const data = await response.json();
+
+    if (data.status === "error") {
+      throw new Error(data.message);
+    }
+
+    // 3. Map Python's response back to your UI
+    return {
+      disease: "Detected from Prescription",
+      antibiotic: data.medicine || "Unknown",
+      dosage: "As prescribed",
+      duration: "Standard Course",
+      evaluation: data.risk_level === "HIGH RISK" ? "Incorrect" : "Correct",
+      evalNote: `WHO Category: ${data.category}`,
+      risk: data.risk_level === "HIGH RISK" ? "High" : "Low",
+      riskNote: "Calculated by Random Forest ML",
+      explanation: `Our AI model has classified this drug as a **${data.category}** category antibiotic. Based on clinical data, this presents a ${data.risk_level.toLowerCase()} for developing antimicrobial resistance.`
+    };
+
+  } catch (error) {
+    console.error("Backend Error:", error);
+    return {
+      disease: "Error", antibiotic: "Error", dosage: "Error", duration: "Error",
+      evaluation: "Error", evalNote: "Connection failed", risk: "High",
+      riskNote: "Server Offline",
+      explanation: "Could not connect to the Python Brain. Make sure you are running 'py app.py' in your terminal!"
+    };
+  }
+}
+
+// ── SYMPTOMS ──
+let rxSelected = 'yes';
+function selectRx(val) {
+  rxSelected = val;
+  document.getElementById('rx-yes').classList.toggle('selected', val === 'yes');
+  document.getElementById('rx-no').classList.toggle('selected', val === 'no');
+}
+
+function runSymptomAnalysis() {
+  const disease = document.getElementById('symp-disease').value.trim();
+  const antibiotic = document.getElementById('symp-antibiotic').value.trim();
+  const duration = document.getElementById('symp-duration').value;
+  const location = document.getElementById('symp-location').value;
+
+  if (!disease || !antibiotic) {
+    document.getElementById('symp-disease').style.borderColor = !disease ? 'rgba(220,38,38,0.5)' : '';
+    document.getElementById('symp-antibiotic').style.borderColor = !antibiotic ? 'rgba(220,38,38,0.5)' : '';
+    setTimeout(() => {
+      document.getElementById('symp-disease').style.borderColor = '';
+      document.getElementById('symp-antibiotic').style.borderColor = '';
+    }, 2000);
+    return;
+  }
+
+  document.getElementById('sympResults').classList.remove('visible');
+  document.getElementById('sympLoading').style.display = 'flex';
+
+  setTimeout(() => {
+    document.getElementById('sympLoading').style.display = 'none';
+    const result = calcRisk(disease, antibiotic, rxSelected, duration, location);
+    renderResults(result, disease, antibiotic);
+    document.getElementById('sympResults').classList.add('visible');
+    document.getElementById('sympResults').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 2200);
+}
+
+function calcRisk(disease, antibiotic, rx, duration, location) {
+  const d = disease.toLowerCase();
+  const a = antibiotic.toLowerCase();
+  let score = 0;
+  let factors = [];
+
+  if (rx === 'no') { score += 35; factors.push({ label: 'Self-medication', val: 35, color: '#dc2626' }); }
+  else { factors.push({ label: 'Has prescription', val: 5, color: '#16a34a' }); }
+
+  const viral = ['cold','flu','fever','cough','viral','sore throat'].some(v => d.includes(v));
+  if (viral) { score += 40; factors.push({ label: 'Antibiotic for viral illness', val: 40, color: '#dc2626' }); }
+
+  const broadSpectrum = ['augmentin','azithromycin','ciprofloxacin','levofloxacin','meropenem','carbapenem'].some(x => a.includes(x));
+  if (broadSpectrum) { score += 15; factors.push({ label: 'Broad-spectrum agent', val: 15, color: '#d97706' }); }
+  else { factors.push({ label: 'Narrow-spectrum agent', val: 5, color: '#2563eb' }); }
+
+  const dur = parseInt(duration) || 5;
+  if (dur > 10) { score += 20; factors.push({ label: 'Extended duration (>10d)', val: 20, color: '#d97706' }); }
+  else if (dur < 3) { score += 10; factors.push({ label: 'Under-treatment risk', val: 10, color: '#d97706' }); }
+
+  const highRiskArea = location && (location.includes('Bengaluru') || location.includes('Mumbai') || location.includes('Delhi'));
+  if (highRiskArea) { score += 10; factors.push({ label: 'High-AMR region', val: 10, color: '#d97706' }); }
+
+  score = Math.min(score, 100);
+  const level = score >= 65 ? 'high' : score >= 35 ? 'medium' : 'low';
+  return { score, level, factors, viral, rx, broadSpectrum };
+}
+
+function renderResults(result, disease, antibiotic) {
+  const riskMessages = {
+    high: { title: 'High Resistance Risk Detected', desc: `The combination of ${disease} and ${antibiotic} usage pattern shows significant risk factors for antimicrobial resistance. Immediate clinical review is recommended.` },
+    medium: { title: 'Moderate Resistance Risk', desc: `Your antibiotic usage for ${disease} has some concerning patterns. While not immediately alarming, adjustments to usage practices are advisable.` },
+    low: { title: 'Low Resistance Risk', desc: `Your antibiotic usage appears appropriate for ${disease}. Continue to complete the full course as prescribed and avoid future self-medication.` }
+  };
+
+  const icons = {
+    high: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+    medium: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+    low: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`
+  };
+
+  const scoreColor = result.level === 'high' ? '#dc2626' : result.level === 'medium' ? '#b45309' : '#16a34a';
+  const msg = riskMessages[result.level];
+  document.getElementById('riskCard').innerHTML = `
+    <div class="result-risk-card ${result.level} fade-up">
+      <div class="risk-icon">${icons[result.level]}</div>
+      <div class="risk-info">
+        <h3>${msg.title}</h3>
+        <p>${msg.desc}</p>
+      </div>
+      <div style="margin-left:auto;text-align:right;flex-shrink:0">
+        <div style="font-size:26px;font-weight:700;font-family:var(--mono);color:${scoreColor}">${result.score}</div>
+        <div style="font-size:11px;color:var(--lt-text3)">Risk Score</div>
+      </div>
+    </div>`;
+
+  if (chartInstance) { chartInstance.destroy(); }
+  const factors = result.factors.slice(0, 5);
+  const ctx = document.getElementById('riskChart').getContext('2d');
+  chartInstance = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: factors.map(f => f.label),
+      datasets: [{ data: factors.map(f => f.val), backgroundColor: factors.map(f => f.color + 'cc'), borderColor: factors.map(f => f.color), borderWidth: 1.5, hoverOffset: 6 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      cutout: '65%',
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed}%` } } }
+    }
+  });
+
+  let legendHTML = '';
+  factors.forEach(f => {
+    legendHTML += `<div class="legend-item"><div class="legend-dot" style="background:${f.color}"></div><span class="legend-label">${f.label}</span><span class="legend-val">${f.val}%</span></div>`;
+  });
+  document.getElementById('chartLegend').innerHTML = legendHTML;
+
+  const tips = [];
+  if (result.rx === 'no') tips.push('Always consult a doctor before taking antibiotics.');
+  if (result.viral) tips.push('Antibiotics do not work against viral infections — they only treat bacterial ones.');
+  if (result.broadSpectrum) tips.push('Broad-spectrum antibiotics should be reserved for severe or resistant infections.');
+  tips.push('Always complete the full course of antibiotics as prescribed, even if you feel better.');
+
+  document.getElementById('sympExplanation').innerHTML = `
+    <div class="lt-form-label" style="margin-bottom:12px;">AI Recommendations</div>
+    ${tips.map(t => `<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:10px;font-size:13px;color:var(--lt-text2);line-height:1.6"><span style="color:var(--lt-accent);margin-top:2px;flex-shrink:0;font-weight:700">›</span>${t}</div>`).join('')}`;
+}
+</script>
+</body>
+</html>
