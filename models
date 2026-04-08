@@ -1,0 +1,37 @@
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score
+import joblib
+
+print("Starting training process...")
+
+df = pd.read_csv('dummydataset.csv')
+print(f"Successfully loaded {len(df)} patient records.")
+
+df.columns = df.columns.str.strip()
+print(f"Columns found in your file: {df.columns.tolist()}")
+
+text_columns = df.select_dtypes(include=['object']).columns.tolist()
+print(f"Automatically encoding these text columns: {text_columns}")
+
+df_encoded = pd.get_dummies(df, columns=text_columns)
+
+target_column = [col for col in df.columns if 'Resistance' in col][0]
+
+X = df_encoded.drop(target_column, axis=1)
+y = df_encoded[target_column]
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+print("Training the AI...")
+model = RandomForestClassifier(n_estimators=100, random_state=42)
+model.fit(X_train, y_train)
+
+predictions = model.predict(X_test)
+accuracy = accuracy_score(y_test, predictions)
+print(f"✅ Training Complete! Model Accuracy: {accuracy * 100:.2f}%")
+
+joblib.dump(model, 'amr_model.pkl')
+joblib.dump(X.columns, 'model_columns.pkl')
+print("✅ Successfully saved 'amr_model.pkl' to your folder.")
