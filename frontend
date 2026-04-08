@@ -1,192 +1,149 @@
-function showPage(id) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.topnav-link').forEach(n => n.classList.remove('active'));
-  document.getElementById('page-' + id).classList.add('active');
-  document.getElementById('nav-' + id).classList.add('active');
-  document.querySelector('.page-wrapper').scrollTo({ top: 0 });
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AMRx — AI Antimicrobial Resistance Assistant</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+<style>
+:root {
+  --bg: #0d0f14;
+  --bg2: #13161e;
+  --bg3: #1a1e28;
+  --bg4: #222736;
+  --border: rgba(255,255,255,0.07);
+  --border2: rgba(255,255,255,0.12);
+  --text: #e8eaf0;
+  --text2: #8b91a8;
+  --text3: #555d78;
+  --accent: #00e5a0;
+  --accent2: #00b87d;
+  --accent-dim: rgba(0,229,160,0.1);
+  --accent-glow: rgba(0,229,160,0.2);
+  --red: #ff5c5c;
+  --red-dim: rgba(255,92,92,0.12);
+  --amber: #ffb347;
+  --amber-dim: rgba(255,179,71,0.12);
+  --blue: #4da6ff;
+  --blue-dim: rgba(77,166,255,0.12);
+  --sidebar-w: 260px;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --font: 'Sora', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+
+  --lt-bg: #f3f4f7;
+  --lt-surface: #ffffff;
+  --lt-border: #e2e6ed;
+  --lt-text: #1a1d2e;
+  --lt-text2: #5a6278;
+  --lt-text3: #9aa0b4;
+  --lt-accent: #2563eb;
+  --lt-accent-dim: rgba(37,99,235,0.08);
+  --lt-red: #dc2626;
+  --lt-amber: #d97706;
+  --lt-shadow: 0 2px 12px rgba(0,0,0,0.07);
+  --lt-shadow-md: 0 4px 24px rgba(0,0,0,0.10);
 }
 
-let uploadedFile = null;
-let chartInstance = null;
+* { margin:0; padding:0; box-sizing:border-box; }
 
-function autoResize(el) {
-  el.style.height = 'auto';
-  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+body {
+  font-family: var(--font);
+  background: var(--lt-bg);
+  color: var(--lt-text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
 }
 
-function handleKey(e) {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    sendMessage();
-  }
+.topnav {
+  background: var(--lt-surface);
+  border-bottom: 1px solid var(--lt-border);
+  height: 56px;
+  display: flex;
+  align-items: center;
+  padding: 0 32px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 1px 8px rgba(0,0,0,0.06);
+  flex-shrink: 0;
 }
 
-function insertQuick(text) {
-  const input = document.getElementById('chatInput');
-  input.value = text;
-  autoResize(input);
-  input.focus();
+.topnav-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  margin-right: auto;
 }
 
-function handleFile(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  uploadedFile = file;
-  document.getElementById('fileName').textContent = file.name;
-  document.getElementById('filePreviewArea').style.display = 'flex';
+.topnav-logo-icon {
+  width: 28px; height: 28px;
+  background: var(--lt-accent);
+  border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
 }
 
-function clearFile() {
-  uploadedFile = null;
-  document.getElementById('filePreviewArea').style.display = 'none';
-  document.getElementById('fileInput').value = '';
+.topnav-logo-icon svg { width: 15px; height: 15px; }
+
+.topnav-logo-text {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--lt-text);
+  letter-spacing: -0.5px;
 }
 
-async function sendMessage(){
-  const input = document.getElementById('chatInput');
-  const text = input.value.trim();
-  if (!text && !uploadedFile) return;
+.topnav-logo-text span { color: var(--lt-accent); }
 
-  document.getElementById('welcomeScreen').style.display = 'none';
-  const container = document.getElementById('chatMessages');
-
-  const userText = text || "Analyze this prescription";
-  appendMessage(container, 'user', userText);
-
-  input.value = '';
-  input.style.height = 'auto';
-  clearFile();
-
-  const loadingId = appendLoading(container);
-  scrollChat();
-
-  setTimeout(async () => {
-    document.getElementById(loadingId)?.remove();
-    const response = await generateResponse(userText);
-    appendAICard(container, response);
-    scrollChat();
-  }, 1800 + Math.random() * 800);
+.topnav-links {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
-function appendMessage(container, role, text) {
-  const div = document.createElement('div');
-  div.className = 'lt-message ' + role + ' fade-up';
-  div.innerHTML = `
-    <div class="lt-avatar ${role}">${role === 'ai' ? 'AI' : 'U'}</div>
-    <div class="lt-bubble">${text}</div>`;
-  container.appendChild(div);
+.topnav-link {
+  padding: 7px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--lt-text2);
+  cursor: pointer;
+  transition: all 0.15s;
+  border: none;
+  background: none;
+  font-family: var(--font);
+  text-decoration: none;
 }
 
-function appendLoading(container) {
-  const id = 'loading-' + Date.now();
-  const div = document.createElement('div');
-  div.className = 'lt-message ai fade-up';
-  div.id = id;
-  div.innerHTML = `
-    <div class="lt-avatar ai">AI</div>
-    <div class="lt-loading">
-      <div class="dot-wave"><span></span><span></span><span></span></div>
-      <span class="loading-text">Analyzing prescription...</span>
-    </div>`;
-  container.appendChild(div);
-  return id;
+.topnav-link:hover { background: var(--lt-accent-dim); color: var(--lt-text); }
+.topnav-link.active { color: var(--lt-accent); font-weight: 600; }
+
+.page-wrapper {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 56px;
 }
 
-function appendAICard(container, data) {
-  const evalClass = data.evaluation === 'Correct' ? 'correct' : 'incorrect';
-  const riskClass = data.risk.toLowerCase();
-  const div = document.createElement('div');
-  div.className = 'lt-message ai fade-up';
-  div.innerHTML = `
-    <div class="lt-avatar ai">AI</div>
-    <div style="max-width:85%;flex:1">
-      <div class="ai-result-card">
-        <div class="ai-result-header">
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
-          Prescription Analysis Report
-        </div>
-        <div class="ai-result-body">
-          <div class="lt-section-label">Extracted Information</div>
-          <div class="lt-info-grid">
-            <div class="lt-info-item"><div class="lt-info-label">Disease</div><div class="lt-info-value">${data.disease}</div></div>
-            <div class="lt-info-item"><div class="lt-info-label">Antibiotic</div><div class="lt-info-value">${data.antibiotic}</div></div>
-            <div class="lt-info-item"><div class="lt-info-label">Dosage</div><div class="lt-info-value">${data.dosage}</div></div>
-            <div class="lt-info-item"><div class="lt-info-label">Duration</div><div class="lt-info-value">${data.duration}</div></div>
-          </div>
-          <div class="lt-section-label">Evaluation</div>
-          <div class="lt-eval-row">
-            <span class="lt-eval-badge ${evalClass}">${data.evaluation}</span>
-            <span class="eval-note">${data.evalNote}</span>
-          </div>
-          <div class="lt-section-label">Resistance Risk</div>
-          <div class="lt-eval-row">
-            <span class="lt-risk-badge ${riskClass}">${data.risk} Risk</span>
-            <span class="eval-note">${data.riskNote}</span>
-          </div>
-          <div class="lt-section-label">Clinical Explanation</div>
-          <div class="lt-explanation">${data.explanation}</div>
-        </div>
-      </div>
-    </div>`;
-  container.appendChild(div);
+.page-wrapper::-webkit-scrollbar { width: 5px; }
+.page-wrapper::-webkit-scrollbar-thumb { background: #d0d4de; border-radius: 4px; }
+
+.page { display: none; }
+.page.active { display: block; }
+
+.analyze-layout {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 36px 32px 24px;
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 28px;
+  align-items: start;
 }
-
-function scrollChat() {
-  const wrapper = document.querySelector('.page-wrapper');
-  setTimeout(() => wrapper.scrollTo({ top: wrapper.scrollHeight, behavior: 'smooth' }), 50);
-}
-
-async function generateResponse(text) {
-  try {
-    let base64Image = "";
-    if (uploadedFile) {
-      base64Image = await new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.readAsDataURL(uploadedFile);
-      });
-    }
-
-    const response = await fetch('http://localhost:5000/analyze', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        image: base64Image,
-        text_query: text,
-        age: 25,
-        symptom: "Fever"
-      })
-    });
-
-    const data = await response.json();
-
-    if (data.status === "error") {
-      throw new Error(data.message);
-    }
-
-    return {
-      disease: "Detected from Prescription",
-      antibiotic: data.medicine || "Unknown",
-      dosage: "As prescribed",
-      duration: "Standard Course",
-      evaluation: data.risk_level === "HIGH RISK" ? "Incorrect" : "Correct",
-      evalNote: `WHO Category: ${data.category}`,
-      risk: data.risk_level === "HIGH RISK" ? "High" : "Low",
-      riskNote: "Calculated by Random Forest ML",
-      explanation: `Our AI model has classified this drug as a **${data.category}** category antibiotic. Based on clinical data, this presents a ${data.risk_level.toLowerCase()} for developing antimicrobial resistance.`
-    };
-
-  } catch (error) {
-    return {
-      disease: "Error",
-      antibiotic: "Error",
-      dosage: "Error",
-      duration: "Error",
-      evaluation: "Error",
-      evalNote: "Connection failed",
-      risk: "High",
-      riskNote: "Server Offline",
-      explanation: "Could not connect to backend"
-    };
-  }
-}
+</style>
